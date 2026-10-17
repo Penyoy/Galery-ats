@@ -41,6 +41,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -60,6 +61,7 @@ import androidx.compose.ui.unit.dp
 import androidx.exifinterface.media.ExifInterface
 import com.ats.galery.data.MediaItem
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -82,6 +84,7 @@ fun PhotoEditorScreen(
     onSave: (Bitmap, (Boolean) -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     var working by remember(item.id) { mutableStateOf<Bitmap?>(null) }
     var loading by remember(item.id) { mutableStateOf(true) }
     var saving by remember(item.id) { mutableStateOf(false) }
@@ -248,7 +251,7 @@ fun PhotoEditorScreen(
                             cropMode = true
                         }
                         EditAction("Muat ulang", { Icon(Icons.Rounded.Refresh, null) }) {
-                            reload()
+                            scope.launch { reload() }
                         }
                     }
                 }

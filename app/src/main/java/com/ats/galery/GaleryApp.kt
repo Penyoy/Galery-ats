@@ -4,10 +4,10 @@ import android.app.Application
 import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.GifDecoder
 import coil.decode.ImageDecoderDecoder
 import coil.decode.VideoFrameDecoder
 import coil.disk.DiskCache
-import coil.gif.GifDecoder
 import coil.memory.MemoryCache
 
 /**
