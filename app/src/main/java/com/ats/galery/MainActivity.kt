@@ -2,11 +2,13 @@ package com.ats.galery
 
 import android.app.PendingIntent
 import android.app.PictureInPictureParams
+import android.app.RemoteAction
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
 import android.content.res.Configuration
+import android.graphics.drawable.Icon
 import android.os.Bundle
 import android.util.Rational
 import androidx.activity.ComponentActivity
@@ -14,9 +16,7 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.mutableStateOf
-import androidx.core.app.RemoteAction
 import androidx.core.content.ContextCompat
-import androidx.core.graphics.drawable.IconCompat
 import com.ats.galery.pip.LocalIsInPip
 import com.ats.galery.pip.Pip
 import com.ats.galery.pip.PipActionSpec
@@ -129,7 +129,7 @@ class MainActivity : ComponentActivity(), PipHost {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         return RemoteAction(
-            IconCompat.createWithResource(context, iconRes),
+            Icon.createWithResource(context, iconRes),
             id,
             id,
             pending
