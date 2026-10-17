@@ -49,11 +49,15 @@ fun MediaGrid(
 
         var running = 0
         sections.forEach { (day, dayItems) ->
+            // Nilai offset dikunci per-bagian. Tanpa ini, lambda item (yang baru
+            // dieksekusi saat masuk viewport) akan membaca `running` yang sudah
+            // bernilai total akhir sehingga item yang dibuka jadi salah.
+            val sectionOffset = running
             item(key = "header-$day", span = { GridItemSpan(maxLineSpan) }) {
                 SectionHeader(text = com.ats.galery.util.formatDayLabel(day), count = dayItems.size)
             }
             itemsIndexed(dayItems, key = { _, item -> item.id }) { indexInSection, item ->
-                val globalIndex = running + indexInSection
+                val globalIndex = sectionOffset + indexInSection
                 MediaCard(
                     item = item,
                     cornerRadiusDp = settings.cornerRadiusDp,

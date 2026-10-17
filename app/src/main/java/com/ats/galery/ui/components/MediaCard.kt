@@ -1,6 +1,6 @@
 package com.ats.galery.ui.components
 
-import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -10,9 +10,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -30,6 +28,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -50,9 +49,13 @@ import com.ats.galery.util.formatDuration
 import kotlinx.coroutines.delay
 import kotlin.math.min
 
+/** Item setelah indeks ini tampil langsung tanpa animasi masuk (hemat frame). */
+private const val MAX_ANIMATED_INDEX = 48
+private const val MAX_STAGGER_STEPS = 10
+
 /**
- * Satu kartu media di grid. Mendukung animasi masuk berjenjang, efek tekan,
- * badge durasi video, dan penanda favorit.
+ * Satu kartu media di grid. Animasi masuk memakai satu nilai progres tunggal
+ * (bukan beberapa animator) dan tidak diulang saat item di-scroll kembali.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -71,61 +74,64 @@ fun MediaCard(
     onToggleFavorite: () -> Unit,
 ) {
     val context = LocalContext.current
-    val animated = entranceDurationMs > 0
+    val animated = entranceDurationMs > 0 && staggerIndex < MAX_ANIMATED_INDEX
 
-    var appeared by remember(item.id) { mutableStateOf(!animated) }
+    // rememberSaveable: state dipertahankan saat item keluar viewport,
+    // sehingga tidak ada animasi masuk berulang ketika pengguna scroll balik.
+    var appeared by rememberSaveable(item.id) { mutableStateOf(!animated) }
     LaunchedEffect(item.id) {
         if (animated && !appeared) {
-            delay(staggerUnitMs * min(staggerIndex, 14))
+            delay(staggerUnitMs * min(staggerIndex, MAX_STAGGER_STEPS))
             appeared = true
         }
     }
 
-    val alpha by animateFloatAsState(
+    val progress by animateFloatAsState(
         targetValue = if (appeared) 1f else 0f,
-        animationSpec = tween(entranceDurationMs.coerceAtLeast(1), easing = FastOutSlowInEasing),
-        label = "cardAlpha",
-    )
-    val entranceScale by animateFloatAsState(
-        targetValue = if (appeared) 1f else when (entrance) {
-            GridEntrance.ZOOM -> 0.84f
-            GridEntrance.CASCADE -> 0.94f
-            GridEntrance.FADE -> 1f
-        },
-        animationSpec = spring(
-            dampingRatio = Spring.DampingRatioNoBouncy,
-            stiffness = Spring.StiffnessLow,
+        animationSpec = tween(
+            durationMillis = entranceDurationMs.coerceAtLeast(1),
+            easing = LinearOutSlowInEasing,
         ),
-        label = "cardScale",
-    )
-    val entranceY by animateFloatAsState(
-        targetValue = if (appeared) 0f else if (entrance == GridEntrance.CASCADE) 42f else 0f,
-        animationSpec = tween(entranceDurationMs.coerceAtLeast(1), easing = FastOutSlowInEasing),
-        label = "cardY",
+        label = "entrance",
     )
 
     val interaction = remember { MutableInteractionSource() }
     val pressed by interaction.collectIsPressedAsState()
     val pressScale by animateFloatAsState(
-        targetValue = if (pressed) 0.94f else 1f,
+        targetValue = if (pressed && animated) 0.95f else 1f,
         animationSpec = spring(
-            dampingRatio = Spring.DampingRatioMediumBouncy,
-            stiffness = Spring.StiffnessLow,
+            dampingRatio = Spring.DampingRatioNoBouncy,
+            stiffness = Spring.StiffnessMediumLow,
         ),
-        label = "pressScale",
+        label = "press",
     )
 
+    val startScale = when (entrance) {
+        GridEntrance.ZOOM -> 0.88f
+        GridEntrance.CASCADE -> 0.96f
+        GridEntrance.FADE -> 1f
+    }
+    val startTranslationY = if (entrance == GridEntrance.CASCADE) 26f else 0f
+
     val shape = RoundedCornerShape(cornerRadiusDp.dp)
+
+    // Saat animasi dimatikan, kartu tidak perlu layer grafis sama sekali.
+    val layerModifier = if (animated) {
+        Modifier.graphicsLayer {
+            val scale = (startScale + (1f - startScale) * progress) * pressScale
+            scaleX = scale
+            scaleY = scale
+            translationY = (1f - progress) * startTranslationY
+            alpha = progress
+        }
+    } else {
+        Modifier
+    }
 
     Box(
         modifier = Modifier
             .aspectRatio(ratioModifier(item, ratio))
-            .graphicsLayer {
-                scaleX = entranceScale * pressScale
-                scaleY = entranceScale * pressScale
-                translationY = entranceY
-                this.alpha = alpha
-            }
+            .then(layerModifier)
             .clip(shape)
             .background(MaterialTheme.colorScheme.surfaceVariant)
             .combinedClickable(

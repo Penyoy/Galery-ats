@@ -12,10 +12,8 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
-import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -30,9 +28,12 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.FastForward
+import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Pause
 import androidx.compose.material.icons.rounded.PictureInPictureAlt
 import androidx.compose.material.icons.rounded.PlayArrow
@@ -58,6 +59,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -267,9 +269,12 @@ fun ViewerScreen(
     LaunchedEffect(currentPlayer, currentItem?.id) {
         val player = currentPlayer ?: return@LaunchedEffect
         while (isActive) {
-            positionMs = player.currentPosition
-            durationMs = if (player.duration > 0L) player.duration else currentItemRef.value?.durationMs ?: 0L
-            delay(300)
+            val position = player.currentPosition
+            if (position != positionMs) positionMs = position
+            val total = player.duration
+            val known = if (total > 0L) total else currentItemRef.value?.durationMs ?: 0L
+            if (known != durationMs) durationMs = known
+            delay(500)
         }
     }
 
@@ -456,7 +461,7 @@ fun ViewerScreen(
     }
 }
 
-/** Halaman video dengan ExoPlayer. */
+/** Halaman video dengan ExoPlayer dan gestur ketuk-dua-kali ±5 detik. */
 @Composable
 private fun VideoPage(
     item: MediaItem,
@@ -505,15 +510,31 @@ private fun VideoPage(
         if (isCurrent) player.play() else player.pause()
     }
 
-    val interaction = remember { MutableInteractionSource() }
+    // Umpan balik singkat setelah melompat 5 detik (true = maju, false = mundur).
+    var seekFeedback by remember(item.id) { mutableStateOf<Boolean?>(null) }
+    LaunchedEffect(seekFeedback) {
+        if (seekFeedback != null) {
+            delay(650)
+            seekFeedback = null
+        }
+    }
+
     Box(
         modifier = modifier
             .background(Color.Black)
-            .clickable(
-                interactionSource = interaction,
-                indication = null,
-                onClick = onToggleChrome,
-            ),
+            .pointerInput(item.id) {
+                detectTapGestures(
+                    onTap = { onToggleChrome() },
+                    onDoubleTap = { position ->
+                        val forward = position.x > size.width / 2f
+                        val total = player.duration
+                        val delta = if (forward) SEEK_STEP_MS else -SEEK_STEP_MS
+                        val target = (player.currentPosition + delta).coerceAtLeast(0L)
+                        player.seekTo(if (total > 0L) target.coerceAtMost(total) else target)
+                        seekFeedback = forward
+                    },
+                )
+            },
     ) {
         AndroidView(
             factory = { ctx ->
@@ -525,8 +546,35 @@ private fun VideoPage(
             },
             modifier = Modifier.fillMaxSize(),
         )
+
+        seekFeedback?.let { forward ->
+            Row(
+                modifier = Modifier
+                    .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
+                    .padding(horizontal = 28.dp)
+                    .clip(RoundedCornerShape(50))
+                    .background(Color.Black.copy(alpha = 0.6f))
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Icon(
+                    imageVector = if (forward) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                    contentDescription = null,
+                    tint = Color.White,
+                )
+                Text(
+                    text = if (forward) "+5 detik" else "−5 detik",
+                    color = Color.White,
+                    style = MaterialTheme.typography.labelLarge,
+                )
+            }
+        }
     }
 }
+
+/** Langkah lompat untuk gestur ketuk dua kali pada video. */
+private const val SEEK_STEP_MS = 5_000L
 
 /** Gambar dengan cubit-zoom dan ketuk dua kali. */
 @Composable
