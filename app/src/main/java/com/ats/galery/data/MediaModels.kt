@@ -57,6 +57,7 @@ fun List<MediaItem>.viewerOrder(sort: MediaSort): List<MediaItem> =
 object ViewerSpec {
     const val ALL = "all"
     const val FAVORITES = "favorites"
+    const val SEARCH = "search"
     const val ALBUM_PREFIX = "album-"
     fun album(id: Long) = "$ALBUM_PREFIX$id"
 }

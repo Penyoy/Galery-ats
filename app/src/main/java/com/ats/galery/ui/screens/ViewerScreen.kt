@@ -12,8 +12,10 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.calculatePan
+import androidx.compose.foundation.gestures.calculateZoom
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -121,7 +123,7 @@ fun ViewerScreen(
     val inPip = LocalIsInPip.current
     val scope = rememberCoroutineScope()
 
-    val items = remember(spec, ui.media, ui.favorites, ui.settings.sort) { ui.bySpec(spec) }
+    val items = remember(spec, ui.media, ui.favorites, ui.searchQuery, ui.settings.sort) { ui.bySpec(spec) }
 
     if (items.isEmpty()) {
         LaunchedEffect(Unit) { onBack() }
@@ -510,12 +512,12 @@ private fun VideoPage(
         if (isCurrent) player.play() else player.pause()
     }
 
-    // Umpan balik singkat setelah melompat 5 detik (true = maju, false = mundur).
-    var seekFeedback by remember(item.id) { mutableStateOf<Boolean?>(null) }
-    LaunchedEffect(seekFeedback) {
-        if (seekFeedback != null) {
+    // Umpan balik singkat setelah aksi ketuk dua kali.
+    var feedback by remember(item.id) { mutableStateOf<VideoFeedback?>(null) }
+    LaunchedEffect(feedback) {
+        if (feedback != null) {
             delay(650)
-            seekFeedback = null
+            feedback = null
         }
     }
 
@@ -526,12 +528,22 @@ private fun VideoPage(
                 detectTapGestures(
                     onTap = { onToggleChrome() },
                     onDoubleTap = { position ->
-                        val forward = position.x > size.width / 2f
-                        val total = player.duration
-                        val delta = if (forward) SEEK_STEP_MS else -SEEK_STEP_MS
-                        val target = (player.currentPosition + delta).coerceAtLeast(0L)
-                        player.seekTo(if (total > 0L) target.coerceAtMost(total) else target)
-                        seekFeedback = forward
+                        val third = size.width / 3f
+                        when {
+                            position.x < third -> {
+                                seekBy(player, -SEEK_STEP_MS)
+                                feedback = VideoFeedback.BACKWARD
+                            }
+                            position.x > third * 2f -> {
+                                seekBy(player, SEEK_STEP_MS)
+                                feedback = VideoFeedback.FORWARD
+                            }
+                            else -> {
+                                val play = !player.isPlaying
+                                if (play) player.play() else player.pause()
+                                feedback = if (play) VideoFeedback.PLAY else VideoFeedback.PAUSE
+                            }
+                        }
                     },
                 )
             },
@@ -547,10 +559,15 @@ private fun VideoPage(
             modifier = Modifier.fillMaxSize(),
         )
 
-        seekFeedback?.let { forward ->
+        feedback?.let { state ->
+            val alignment = when (state) {
+                VideoFeedback.FORWARD -> Alignment.CenterEnd
+                VideoFeedback.BACKWARD -> Alignment.CenterStart
+                else -> Alignment.Center
+            }
             Row(
                 modifier = Modifier
-                    .align(if (forward) Alignment.CenterEnd else Alignment.CenterStart)
+                    .align(alignment)
                     .padding(horizontal = 28.dp)
                     .clip(RoundedCornerShape(50))
                     .background(Color.Black.copy(alpha = 0.6f))
@@ -559,12 +576,22 @@ private fun VideoPage(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 Icon(
-                    imageVector = if (forward) Icons.Rounded.FastForward else Icons.Rounded.FastRewind,
+                    imageVector = when (state) {
+                        VideoFeedback.FORWARD -> Icons.Rounded.FastForward
+                        VideoFeedback.BACKWARD -> Icons.Rounded.FastRewind
+                        VideoFeedback.PLAY -> Icons.Rounded.PlayArrow
+                        VideoFeedback.PAUSE -> Icons.Rounded.Pause
+                    },
                     contentDescription = null,
                     tint = Color.White,
                 )
                 Text(
-                    text = if (forward) "+5 detik" else "−5 detik",
+                    text = when (state) {
+                        VideoFeedback.FORWARD -> "+5 detik"
+                        VideoFeedback.BACKWARD -> "−5 detik"
+                        VideoFeedback.PLAY -> "Diputar"
+                        VideoFeedback.PAUSE -> "Dijeda"
+                    },
                     color = Color.White,
                     style = MaterialTheme.typography.labelLarge,
                 )
@@ -573,8 +600,18 @@ private fun VideoPage(
     }
 }
 
+/** Aksi ketuk dua kali pada video. */
+private enum class VideoFeedback { FORWARD, BACKWARD, PLAY, PAUSE }
+
 /** Langkah lompat untuk gestur ketuk dua kali pada video. */
 private const val SEEK_STEP_MS = 5_000L
+
+/** Melompat [deltaMs] detik dari posisi saat ini, dibatasi durasi video. */
+private fun seekBy(player: ExoPlayer, deltaMs: Long) {
+    val total = player.duration
+    val target = (player.currentPosition + deltaMs).coerceAtLeast(0L)
+    player.seekTo(if (total > 0L) target.coerceAtMost(total) else target)
+}
 
 /** Gambar dengan cubit-zoom dan ketuk dua kali. */
 @Composable
@@ -604,10 +641,32 @@ private fun ZoomableImage(
         modifier = modifier
             .onSizeChanged { containerSize = it }
             .pointerInput(item.id) {
-                detectTransformGestures { _, pan, zoom, _ ->
-                    val newScale = (scale * zoom).coerceIn(1f, maxScale)
-                    scale = newScale
-                    offset = if (newScale <= 1f) Offset.Zero else clamp(offset + pan, newScale)
+                // Cubit untuk zoom dan geser hanya saat gambar sudah diperbesar.
+                // Pada skala 1 gerakan tidak dikonsumsi supaya pager (slide antar
+                // foto/video) tetap bisa menggeser halaman.
+                awaitPointerEventScope {
+                    while (true) {
+                        awaitFirstDown(requireUnconsumed = false)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val pressed = event.changes.count { it.pressed }
+                            if (pressed == 0) break
+
+                            if (pressed >= 2) {
+                                val newScale = (scale * event.calculateZoom()).coerceIn(1f, maxScale)
+                                val pan = event.calculatePan()
+                                scale = newScale
+                                offset = if (newScale <= 1f) Offset.Zero else clamp(offset + pan, newScale)
+                                event.changes.forEach { if (it.pressed) it.consume() }
+                            } else if (scale > 1.01f) {
+                                val pan = event.calculatePan()
+                                if (pan != Offset.Zero) {
+                                    offset = clamp(offset + pan, scale)
+                                    event.changes.forEach { if (it.pressed) it.consume() }
+                                }
+                            }
+                        }
+                    }
                 }
             }
             .pointerInput(item.id) {

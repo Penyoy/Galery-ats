@@ -1,6 +1,7 @@
 package com.ats.galery.ui.components
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.lazy.grid.GridCells
@@ -16,9 +17,18 @@ import com.ats.galery.data.MediaItem
 import com.ats.galery.data.groupByDay
 import com.ats.galery.settings.Settings
 
+/** Lebar minimum satu kartu saat layar lebar (tablet/lanskap). */
+private val WIDE_CELL_MIN = 132.dp
+
+/** Ambang lebar layar yang dianggap "lebar". */
+private val WIDE_SCREEN = 600.dp
+
 /**
  * Grid media berkelompok per hari dengan animasi masuk berjenjang.
  * [onOpen] menerima daftar terurut yang sama dengan tampilan beserta indeksnya.
+ *
+ * Di layar lebar jumlah kolom menyesuaikan sendiri (fleksibel) sehingga kartu
+ * tetap seimbang, sedangkan di ponsel mengikuti pilihan pengguna.
  */
 @Composable
 fun MediaGrid(
@@ -38,42 +48,50 @@ fun MediaGrid(
     val staggerUnitMs = if (durationMs <= 0) 0L
     else (24f / settings.animationSpeed).toLong()
 
-    LazyVerticalGrid(
-        columns = GridCells.Fixed(settings.columns),
-        modifier = modifier.fillMaxSize(),
-        contentPadding = contentPadding,
-        horizontalArrangement = Arrangement.spacedBy(settings.spacingDp.dp),
-        verticalArrangement = Arrangement.spacedBy(settings.spacingDp.dp),
-    ) {
-        header?.invoke(this)
+    BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+        val columns = if (maxWidth >= WIDE_SCREEN) {
+            GridCells.Adaptive(minSize = WIDE_CELL_MIN)
+        } else {
+            GridCells.Fixed(settings.columns)
+        }
 
-        var running = 0
-        sections.forEach { (day, dayItems) ->
-            // Nilai offset dikunci per-bagian. Tanpa ini, lambda item (yang baru
-            // dieksekusi saat masuk viewport) akan membaca `running` yang sudah
-            // bernilai total akhir sehingga item yang dibuka jadi salah.
-            val sectionOffset = running
-            item(key = "header-$day", span = { GridItemSpan(maxLineSpan) }) {
-                SectionHeader(text = com.ats.galery.util.formatDayLabel(day), count = dayItems.size)
+        LazyVerticalGrid(
+            columns = columns,
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = contentPadding,
+            horizontalArrangement = Arrangement.spacedBy(settings.spacingDp.dp),
+            verticalArrangement = Arrangement.spacedBy(settings.spacingDp.dp),
+        ) {
+            header?.invoke(this)
+
+            var running = 0
+            sections.forEach { (day, dayItems) ->
+                // Nilai offset dikunci per-bagian. Tanpa ini, lambda item (yang baru
+                // dieksekusi saat masuk viewport) akan membaca `running` yang sudah
+                // bernilai total akhir sehingga item yang dibuka jadi salah.
+                val sectionOffset = running
+                item(key = "header-$day", span = { GridItemSpan(maxLineSpan) }) {
+                    SectionHeader(text = com.ats.galery.util.formatDayLabel(day), count = dayItems.size)
+                }
+                itemsIndexed(dayItems, key = { _, item -> item.id }) { indexInSection, item ->
+                    val globalIndex = sectionOffset + indexInSection
+                    MediaCard(
+                        item = item,
+                        cornerRadiusDp = settings.cornerRadiusDp,
+                        ratio = settings.thumbRatio,
+                        showDurationBadge = settings.showDurationBadge,
+                        showFavoriteStar = settings.showFavoriteStar,
+                        isFavorite = item.id in favorites,
+                        entrance = settings.gridEntrance,
+                        staggerIndex = globalIndex,
+                        entranceDurationMs = durationMs,
+                        staggerUnitMs = staggerUnitMs,
+                        onOpen = { onOpen(ordered, globalIndex) },
+                        onToggleFavorite = { onToggleFavorite(item) },
+                    )
+                }
+                running += dayItems.size
             }
-            itemsIndexed(dayItems, key = { _, item -> item.id }) { indexInSection, item ->
-                val globalIndex = sectionOffset + indexInSection
-                MediaCard(
-                    item = item,
-                    cornerRadiusDp = settings.cornerRadiusDp,
-                    ratio = settings.thumbRatio,
-                    showDurationBadge = settings.showDurationBadge,
-                    showFavoriteStar = settings.showFavoriteStar,
-                    isFavorite = item.id in favorites,
-                    entrance = settings.gridEntrance,
-                    staggerIndex = globalIndex,
-                    entranceDurationMs = durationMs,
-                    staggerUnitMs = staggerUnitMs,
-                    onOpen = { onOpen(ordered, globalIndex) },
-                    onToggleFavorite = { onToggleFavorite(item) },
-                )
-            }
-            running += dayItems.size
         }
     }
 }

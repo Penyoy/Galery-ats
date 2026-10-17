@@ -33,15 +33,26 @@ data class MediaUiState(
     val albums: List<Album> = emptyList(),
     val favorites: Set<Long> = emptySet(),
     val settings: Settings = Settings(),
+    val searchQuery: String = "",
     val loading: Boolean = true,
 ) {
     fun favoritesList(): List<MediaItem> = media.filter { it.id in favorites }
 
     fun albumItems(albumId: Long): List<MediaItem> = media.filter { it.albumId == albumId }
 
+    /** Hasil pencarian nama berkas atau nama album. */
+    fun searchResults(): List<MediaItem> {
+        val q = searchQuery.trim()
+        if (q.isEmpty()) return emptyList()
+        return media
+            .filter { it.name.contains(q, ignoreCase = true) || it.album.contains(q, ignoreCase = true) }
+            .viewerOrder(settings.sort)
+    }
+
     /** Daftar item untuk sebuah koleksi viewer. */
     fun bySpec(spec: String): List<MediaItem> = when {
         spec == ViewerSpec.FAVORITES -> favoritesList().viewerOrder(settings.sort)
+        spec == ViewerSpec.SEARCH -> searchResults()
         spec.startsWith(ViewerSpec.ALBUM_PREFIX) ->
             albumItems(spec.removePrefix(ViewerSpec.ALBUM_PREFIX).toLongOrNull() ?: -1L)
                 .viewerOrder(settings.sort)
@@ -67,6 +78,7 @@ class MediaViewModel(app: Application) : AndroidViewModel(app) {
 
     private val mediaFlow = MutableStateFlow<List<MediaItem>>(emptyList())
     private val loading = MutableStateFlow(true)
+    private val searchQuery = MutableStateFlow("")
 
     private val settingsFlow = store.settings
         .stateIn(viewModelScope, SharingStarted.Eagerly, Settings())
@@ -75,7 +87,13 @@ class MediaViewModel(app: Application) : AndroidViewModel(app) {
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptySet())
 
     val ui: StateFlow<MediaUiState> =
-        combine(mediaFlow, settingsFlow, favoritesFlow, loading) { media, settings, favorites, isLoading ->
+        combine(
+            mediaFlow,
+            settingsFlow,
+            favoritesFlow,
+            searchQuery,
+            loading,
+        ) { media, settings, favorites, query, isLoading ->
             val sorted = media.sortedWith(settings.sort.comparator())
             MediaUiState(
                 media = sorted,
@@ -92,12 +110,17 @@ class MediaViewModel(app: Application) : AndroidViewModel(app) {
                     .sortedBy { it.name.lowercase() },
                 favorites = favorites,
                 settings = settings,
+                searchQuery = query,
                 loading = isLoading,
             )
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), MediaUiState())
 
     init {
         refresh()
+    }
+
+    fun setSearchQuery(value: String) {
+        searchQuery.value = value
     }
 
     fun refresh() {

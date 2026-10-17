@@ -64,7 +64,8 @@ fun AlbumsTab(
     }
 
     LazyVerticalGrid(
-        columns = GridCells.Fixed(2),
+        // Fleksibel: 2 kolom di ponsel, bertambah sendiri di layar lebar.
+        columns = GridCells.Adaptive(minSize = 168.dp),
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding,
         horizontalArrangement = Arrangement.spacedBy(10.dp),

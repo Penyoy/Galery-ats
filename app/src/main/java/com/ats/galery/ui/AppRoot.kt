@@ -13,22 +13,16 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.Image
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.PhotoAlbum
 import androidx.compose.material.icons.rounded.PhotoLibrary
+import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material.icons.rounded.Settings as SettingsIcon
 import androidx.compose.material.icons.rounded.Star
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
@@ -37,8 +31,6 @@ import androidx.compose.material3.NavigationBarItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -50,8 +42,6 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -61,16 +51,17 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
-import com.ats.galery.R
 import com.ats.galery.data.MediaItem
 import com.ats.galery.data.ViewerSpec
 import com.ats.galery.media.MediaUiState
 import com.ats.galery.media.MediaViewModel
+import com.ats.galery.ui.components.EdgeStretch
 import com.ats.galery.ui.screens.AlbumScreen
 import com.ats.galery.ui.screens.AlbumsTab
 import com.ats.galery.ui.screens.FavoritesTab
 import com.ats.galery.ui.screens.GalleryTab
 import com.ats.galery.ui.screens.PermissionScreen
+import com.ats.galery.ui.screens.SearchTab
 import com.ats.galery.ui.screens.SettingsScreen
 import com.ats.galery.ui.screens.ViewerScreen
 import com.ats.galery.ui.theme.GaleryTheme
@@ -168,7 +159,6 @@ private fun AppNav(ui: MediaUiState, vm: MediaViewModel) {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun MainScaffold(
     ui: MediaUiState,
@@ -182,34 +172,13 @@ private fun MainScaffold(
             TabItem("Foto", Icons.Rounded.PhotoLibrary),
             TabItem("Album", Icons.Rounded.PhotoAlbum),
             TabItem("Favorit", Icons.Rounded.Star),
+            TabItem("Cari", Icons.Rounded.Search),
             TabItem("Setelan", Icons.Rounded.SettingsIcon),
         )
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Image(
-                            painter = painterResource(id = R.drawable.ic_logo),
-                            contentDescription = null,
-                            modifier = Modifier.size(22.dp),
-                        )
-                        Spacer(Modifier.size(9.dp))
-                        Text(
-                            text = "galery ats",
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    titleContentColor = MaterialTheme.colorScheme.onBackground,
-                ),
-            )
-        },
         bottomBar = {
             NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
                 tabs.forEachIndexed { index, item ->
@@ -238,42 +207,60 @@ private fun MainScaffold(
         )
 
         Box(modifier = Modifier.fillMaxSize()) {
-            AnimatedContent(
-                targetState = tab,
-                transitionSpec = {
-                    val forward = targetState > initialState
-                    val duration = ui.settings.duration(220).coerceAtLeast(1)
-                    val exitDuration = ui.settings.duration(150).coerceAtLeast(1)
-                    val sign = if (forward) 1 else -1
-                    (
-                        fadeIn(tween(duration)) +
-                            slideInHorizontally(tween(duration)) { it / 12 * sign }
-                        ) togetherWith (
-                        fadeOut(tween(exitDuration)) +
-                            slideOutHorizontally(tween(exitDuration)) { -it / 12 * sign }
+            // Efek "melar" saat gulir mentok di ujung.
+            EdgeStretch(
+                enabled = ui.settings.animationsEnabled,
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        val forward = targetState > initialState
+                        val duration = ui.settings.duration(240).coerceAtLeast(1)
+                        val exitDuration = ui.settings.duration(170).coerceAtLeast(1)
+                        val sign = if (forward) 1 else -1
+                        // Geser sepertiga lebar layar: jelas terlihat "sliding".
+                        (
+                            fadeIn(tween(duration)) +
+                                slideInHorizontally(tween(duration)) { it / 3 * sign }
+                            ) togetherWith (
+                            fadeOut(tween(exitDuration)) +
+                                slideOutHorizontally(tween(exitDuration)) { -it / 3 * sign }
+                            )
+                    },
+                    label = "tabContent",
+                ) { current ->
+                    when (current) {
+                        0 -> GalleryTab(
+                            ui = ui,
+                            contentPadding = contentPadding,
+                            onOpen = onOpenViewer,
+                            onToggleFavorite = { vm.toggleFavorite(it.id) },
                         )
-                },
-                label = "tabContent",
-            ) { current ->
-                when (current) {
-                    0 -> GalleryTab(
-                        ui = ui,
-                        contentPadding = contentPadding,
-                        onOpen = onOpenViewer,
-                        onToggleFavorite = { vm.toggleFavorite(it.id) },
-                    )
-                    1 -> AlbumsTab(
-                        ui = ui,
-                        contentPadding = contentPadding,
-                        onOpenAlbum = onOpenAlbum,
-                    )
-                    2 -> FavoritesTab(
-                        ui = ui,
-                        contentPadding = contentPadding,
-                        onOpen = onOpenViewer,
-                        onToggleFavorite = { vm.toggleFavorite(it.id) },
-                    )
-                    else -> SettingsScreen(ui = ui, vm = vm)
+                        1 -> AlbumsTab(
+                            ui = ui,
+                            contentPadding = contentPadding,
+                            onOpenAlbum = onOpenAlbum,
+                        )
+                        2 -> FavoritesTab(
+                            ui = ui,
+                            contentPadding = contentPadding,
+                            onOpen = onOpenViewer,
+                            onToggleFavorite = { vm.toggleFavorite(it.id) },
+                        )
+                        3 -> SearchTab(
+                            ui = ui,
+                            contentPadding = contentPadding,
+                            onQueryChange = vm::setSearchQuery,
+                            onOpen = onOpenViewer,
+                            onToggleFavorite = { vm.toggleFavorite(it.id) },
+                        )
+                        else -> SettingsScreen(
+                            ui = ui,
+                            vm = vm,
+                            contentPadding = contentPadding,
+                        )
+                    }
                 }
             }
 

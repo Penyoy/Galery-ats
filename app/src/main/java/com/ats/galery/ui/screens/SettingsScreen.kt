@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -47,13 +48,20 @@ import kotlin.math.roundToInt
 
 /** Tab "Setelan". */
 @Composable
-fun SettingsScreen(ui: MediaUiState, vm: MediaViewModel) {
+fun SettingsScreen(
+    ui: MediaUiState,
+    vm: MediaViewModel,
+    contentPadding: PaddingValues = PaddingValues(),
+) {
     val s = ui.settings
     var showResetDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            // Inset di luar area gulir: konten pertama tidak lagi tertutup bar atas
+            // maupun bar navigasi bawah.
+            .padding(contentPadding)
             .verticalScroll(rememberScrollState())
             .padding(horizontal = 14.dp, vertical = 6.dp),
     ) {
