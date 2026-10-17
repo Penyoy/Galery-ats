@@ -32,6 +32,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +62,7 @@ import com.ats.galery.ui.screens.AlbumsTab
 import com.ats.galery.ui.screens.FavoritesTab
 import com.ats.galery.ui.screens.GalleryTab
 import com.ats.galery.ui.screens.PermissionScreen
+import com.ats.galery.ui.screens.PhotoEditorScreen
 import com.ats.galery.ui.screens.SearchTab
 import com.ats.galery.ui.screens.SettingsScreen
 import com.ats.galery.ui.screens.ViewerScreen
@@ -154,7 +156,24 @@ private fun AppNav(ui: MediaUiState, vm: MediaViewModel) {
                 ui = ui,
                 vm = vm,
                 onBack = { nav.popBackStack() },
+                onEdit = { id -> nav.navigate("edit/$id") },
             )
+        }
+        composable(
+            route = "edit/{id}",
+            arguments = listOf(navArgument("id") { type = NavType.LongType }),
+        ) { entry ->
+            val id = entry.arguments?.getLong("id") ?: -1L
+            val item = ui.media.firstOrNull { it.id == id }
+            if (item == null) {
+                LaunchedEffect(Unit) { nav.popBackStack() }
+            } else {
+                PhotoEditorScreen(
+                    item = item,
+                    onBack = { nav.popBackStack() },
+                    onSave = { bitmap, onResult -> vm.saveEditedImage(item.name, bitmap, onResult) },
+                )
+            }
         }
     }
 }

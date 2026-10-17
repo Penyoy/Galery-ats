@@ -6,9 +6,12 @@ import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.TransformOrigin
@@ -41,6 +44,9 @@ fun EdgeStretch(
 ) {
     val stretch = remember { mutableFloatStateOf(0f) }
     val scope = rememberCoroutineScope()
+    // Layer grafis hanya dipasang saat benar-benar meregang supaya gulir normal
+    // tidak perlu komposisi ulang ke lapisan terpisah (lebih ringan).
+    var stretching by remember { mutableStateOf(false) }
     val maxStretch = with(LocalDensity.current) { MAX_STRETCH_DP.dp.toPx() }
 
     val connection = remember(enabled, maxStretch, scope) {
@@ -54,6 +60,7 @@ fun EdgeStretch(
                 val target = current + available.y * PULL_FACTOR
                 val clamped = if (current > 0f) target.coerceAtLeast(0f) else target.coerceAtMost(0f)
                 stretch.floatValue = clamped
+                if (!stretching) stretching = true
                 return Offset(0f, (clamped - current) / PULL_FACTOR)
             }
 
@@ -66,6 +73,7 @@ fun EdgeStretch(
                 if (available.y == 0f) return Offset.Zero
                 stretch.floatValue = (stretch.floatValue + available.y * PULL_FACTOR)
                     .coerceIn(-maxStretch, maxStretch)
+                if (!stretching) stretching = true
                 return Offset(0f, available.y)
             }
 
@@ -81,28 +89,36 @@ fun EdgeStretch(
                                 stiffness = Spring.StiffnessMediumLow,
                             ),
                         ) { value, _ -> stretch.floatValue = value }
+                        stretch.floatValue = 0f
+                        stretching = false
                     }
+                } else if (stretching) {
+                    stretching = false
                 }
                 return Velocity.Zero
             }
         }
     }
 
+    val layerModifier = if (stretching) {
+        Modifier.graphicsLayer {
+            val px = stretch.floatValue
+            val f = (abs(px) / maxStretch).coerceIn(0f, 1f)
+            translationY = px
+            // Titik tumpu di ujung yang ditarik agar terlihat meregang.
+            transformOrigin = TransformOrigin(0.5f, if (px > 0f) 0f else 1f)
+            scaleY = 1f + 0.05f * f
+            scaleX = 1f - 0.02f * f
+        }
+    } else {
+        Modifier
+    }
+
     Box(modifier = modifier.nestedScroll(connection)) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .graphicsLayer {
-                    val px = stretch.floatValue
-                    if (px != 0f) {
-                        val f = (abs(px) / maxStretch).coerceIn(0f, 1f)
-                        translationY = px
-                        // Titik tumpu di ujung yang ditarik agar terlihat meregang.
-                        transformOrigin = TransformOrigin(0.5f, if (px > 0f) 0f else 1f)
-                        scaleY = 1f + 0.05f * f
-                        scaleX = 1f - 0.02f * f
-                    }
-                },
+                .then(layerModifier),
         ) {
             content()
         }

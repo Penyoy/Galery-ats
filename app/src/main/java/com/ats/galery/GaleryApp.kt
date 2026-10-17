@@ -1,10 +1,14 @@
 package com.ats.galery
 
 import android.app.Application
+import android.os.Build
 import coil.ImageLoader
 import coil.ImageLoaderFactory
+import coil.decode.ImageDecoderDecoder
 import coil.decode.VideoFrameDecoder
 import coil.disk.DiskCache
+import coil.gif.GifDecoder
+import coil.memory.MemoryCache
 
 /**
  * Galery ATS — All The Storage.
@@ -13,15 +17,22 @@ import coil.disk.DiskCache
  */
 class GaleryApp : Application(), ImageLoaderFactory {
 
-    override fun onCreate() {
-        super.onCreate()
-    }
-
     override fun newImageLoader(): ImageLoader =
         ImageLoader.Builder(this)
             .components {
-                // Dukungan thumbnail untuk video lewat MediaMetadataRetriever lokal.
+                // Thumbnail video lewat MediaMetadataRetriever lokal.
                 add(VideoFrameDecoder.Factory())
+                // Animasi GIF/WebP: ImageDecoder di Android 9+, GifDecoder di bawahnya.
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
+                    add(ImageDecoderDecoder.Factory())
+                } else {
+                    add(GifDecoder.Factory())
+                }
+            }
+            .memoryCache {
+                MemoryCache.Builder(this)
+                    .maxSizePercent(0.22)
+                    .build()
             }
             .crossfade(true)
             .diskCache {

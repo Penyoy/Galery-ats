@@ -24,6 +24,10 @@ data class Settings(
     val showFavoriteStar: Boolean = true,
     val autoPip: Boolean = true,
     val confirmDelete: Boolean = true,
+    /** Putar video berulang otomatis. */
+    val loopVideos: Boolean = true,
+    /** Pratinjau bergerak untuk video & GIF di grid. */
+    val animatedPreviews: Boolean = true,
 ) {
     /** Durasi animasi dasar (ms) setelah dikalikan kecepatan. */
     fun duration(base: Int): Int =

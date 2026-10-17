@@ -1,9 +1,12 @@
 package com.ats.galery.media
 
 import android.app.Application
+import android.content.ContentValues
 import android.content.IntentSender
+import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.os.Environment
 import android.provider.MediaStore
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -151,10 +154,57 @@ class MediaViewModel(app: Application) : AndroidViewModel(app) {
     fun setShowFavoriteStar(value: Boolean) = launchStore { this.setShowFavoriteStar(value) }
     fun setAutoPip(value: Boolean) = launchStore { this.setAutoPip(value) }
     fun setConfirmDelete(value: Boolean) = launchStore { this.setConfirmDelete(value) }
+    fun setLoopVideos(value: Boolean) = launchStore { this.setLoopVideos(value) }
+    fun setAnimatedPreviews(value: Boolean) = launchStore { this.setAnimatedPreviews(value) }
     fun resetSettings() = launchStore { this.resetSettings() }
 
     private fun launchStore(block: suspend SettingsStore.() -> Unit) {
         viewModelScope.launch { store.block() }
+    }
+
+    // ---- Edit foto -----------------------------------------------------------
+
+    /** Menyimpan bitmap hasil edit sebagai berkas baru di galeri. */
+    fun saveEditedImage(sourceName: String, bitmap: Bitmap, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                runCatching { writeImageToGallery(sourceName, bitmap) }.isSuccess
+            }
+            if (ok) refresh()
+            onResult(ok)
+        }
+    }
+
+    private fun writeImageToGallery(sourceName: String, bitmap: Bitmap): Uri {
+        val app = getApplication<Application>()
+        val resolver = app.contentResolver
+        val base = sourceName.substringBeforeLast('.').ifBlank { "galery-ats" }
+        val values = ContentValues().apply {
+            put(MediaStore.Images.Media.DISPLAY_NAME, "$base-edit-${System.currentTimeMillis()}.jpg")
+            put(MediaStore.Images.Media.MIME_TYPE, "image/jpeg")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(MediaStore.Images.Media.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/galery ats")
+                put(MediaStore.Images.Media.IS_PENDING, 1)
+            }
+        }
+        val collection = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            MediaStore.Images.Media.getContentUri(MediaStore.VOLUME_EXTERNAL_PRIMARY)
+        } else {
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI
+        }
+        val uri = resolver.insert(collection, values) ?: error("tidak bisa membuat berkas baru")
+        try {
+            resolver.openOutputStream(uri)?.use { out ->
+                if (!bitmap.compress(Bitmap.CompressFormat.JPEG, 95, out)) error("gagal menulis gambar")
+            } ?: error("tidak bisa membuka berkas")
+        } catch (t: Throwable) {
+            runCatching { resolver.delete(uri, null, null) }
+            throw t
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            resolver.update(uri, ContentValues().apply { put(MediaStore.Images.Media.IS_PENDING, 0) }, null, null)
+        }
+        return uri
     }
 
     // ---- Hapus ---------------------------------------------------------------

@@ -50,12 +50,15 @@ import kotlinx.coroutines.delay
 import kotlin.math.min
 
 /** Item setelah indeks ini tampil langsung tanpa animasi masuk (hemat frame). */
-private const val MAX_ANIMATED_INDEX = 48
-private const val MAX_STAGGER_STEPS = 10
+private const val MAX_ANIMATED_INDEX = 24
+private const val MAX_STAGGER_STEPS = 8
 
 /**
- * Satu kartu media di grid. Animasi masuk memakai satu nilai progres tunggal
- * (bukan beberapa animator) dan tidak diulang saat item di-scroll kembali.
+ * Satu kartu media di grid.
+ *
+ * Optimasi: satu nilai animasi saja, permintaan gambar diingat (tidak dibuat
+ * ulang tiap recomposition), dan layer grafis hanya dipasang selama animasi
+ * masuk atau saat kartu ditekan — sehingga gulir tetap ringan.
  */
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -70,6 +73,8 @@ fun MediaCard(
     staggerIndex: Int,
     entranceDurationMs: Int,
     staggerUnitMs: Long,
+    animatedPreview: Boolean,
+    isPreview: Boolean,
     onOpen: () -> Unit,
     onToggleFavorite: () -> Unit,
 ) {
@@ -83,6 +88,17 @@ fun MediaCard(
         if (animated && !appeared) {
             delay(staggerUnitMs * min(staggerIndex, MAX_STAGGER_STEPS))
             appeared = true
+        }
+    }
+
+    // Layer grafis hanya selama animasi masuk berjalan.
+    var entranceDone by remember(item.id) { mutableStateOf(!animated || appeared) }
+    LaunchedEffect(appeared, animated) {
+        if (!animated) {
+            entranceDone = true
+        } else if (appeared) {
+            delay(entranceDurationMs.toLong() + 60L)
+            entranceDone = true
         }
     }
 
@@ -112,20 +128,28 @@ fun MediaCard(
         GridEntrance.FADE -> 1f
     }
     val startTranslationY = if (entrance == GridEntrance.CASCADE) 26f else 0f
+    val layerActive = animated && (!entranceDone || pressed)
 
     val shape = RoundedCornerShape(cornerRadiusDp.dp)
 
-    // Saat animasi dimatikan, kartu tidak perlu layer grafis sama sekali.
-    val layerModifier = if (animated) {
+    val layerModifier = if (layerActive) {
         Modifier.graphicsLayer {
-            val scale = (startScale + (1f - startScale) * progress) * pressScale
+            val scale = (startScale + (1f - startScale) * if (entranceDone) 1f else progress) * pressScale
             scaleX = scale
             scaleY = scale
-            translationY = (1f - progress) * startTranslationY
-            alpha = progress
+            translationY = if (entranceDone) 0f else (1f - progress) * startTranslationY
+            alpha = if (entranceDone) 1f else progress
         }
     } else {
         Modifier
+    }
+
+    // Permintaan gambar diingat agar tidak dibangun ulang setiap recomposition.
+    val request = remember(item.uri, animated) {
+        ImageRequest.Builder(context)
+            .data(item.uri)
+            .crossfade(animated)
+            .build()
     }
 
     Box(
@@ -142,16 +166,19 @@ fun MediaCard(
             ),
     ) {
         AsyncImage(
-            model = ImageRequest.Builder(context)
-                .data(item.uri)
-                .crossfade(animated)
-                .build(),
+            model = request,
             contentDescription = item.name,
             contentScale = ContentScale.Crop,
             modifier = Modifier.fillMaxSize(),
         )
 
-        if (item.isVideo) {
+        // Pratinjau gerak: hanya satu video berjalan di seluruh grid.
+        val previewing = isPreview && item.isVideo && animatedPreview
+        if (previewing) {
+            VideoPreview(uri = item.uri, modifier = Modifier.fillMaxSize())
+        }
+
+        if (item.isVideo && !previewing) {
             Box(
                 modifier = Modifier
                     .align(Alignment.Center)
@@ -167,21 +194,21 @@ fun MediaCard(
                     modifier = Modifier.size(20.dp),
                 )
             }
+        }
 
-            if (showDurationBadge && item.durationMs > 0L) {
-                Text(
-                    text = formatDuration(item.durationMs),
-                    color = Color.White,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(5.dp)
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(Color.Black.copy(alpha = 0.55f))
-                        .padding(horizontal = 5.dp, vertical = 2.dp),
-                )
-            }
+        if (item.isVideo && showDurationBadge && item.durationMs > 0L) {
+            Text(
+                text = formatDuration(item.durationMs),
+                color = Color.White,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(5.dp)
+                    .clip(RoundedCornerShape(6.dp))
+                    .background(Color.Black.copy(alpha = 0.55f))
+                    .padding(horizontal = 5.dp, vertical = 2.dp),
+            )
         }
 
         if (showFavoriteStar && isFavorite) {

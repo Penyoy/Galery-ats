@@ -38,6 +38,8 @@ class SettingsStore(private val context: Context) {
         val FAV_STAR = booleanPreferencesKey("fav_star")
         val AUTO_PIP = booleanPreferencesKey("auto_pip")
         val CONFIRM_DELETE = booleanPreferencesKey("confirm_delete")
+        val LOOP_VIDEO = booleanPreferencesKey("loop_videos")
+        val ANIMATED_PREVIEW = booleanPreferencesKey("animated_previews")
         val FAVORITES = stringSetPreferencesKey("favorites")
     }
 
@@ -59,6 +61,8 @@ class SettingsStore(private val context: Context) {
                 showFavoriteStar = p[Keys.FAV_STAR] ?: true,
                 autoPip = p[Keys.AUTO_PIP] ?: true,
                 confirmDelete = p[Keys.CONFIRM_DELETE] ?: true,
+                loopVideos = p[Keys.LOOP_VIDEO] ?: true,
+                animatedPreviews = p[Keys.ANIMATED_PREVIEW] ?: true,
             )
         }
 
@@ -95,6 +99,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setAutoPip(value: Boolean) = context.dataStore.edit { it[Keys.AUTO_PIP] = value }
 
     suspend fun setConfirmDelete(value: Boolean) = context.dataStore.edit { it[Keys.CONFIRM_DELETE] = value }
+
+    suspend fun setLoopVideos(value: Boolean) = context.dataStore.edit { it[Keys.LOOP_VIDEO] = value }
+
+    suspend fun setAnimatedPreviews(value: Boolean) = context.dataStore.edit { it[Keys.ANIMATED_PREVIEW] = value }
 
     suspend fun toggleFavorite(id: Long) = context.dataStore.edit { p ->
         val current = p[Keys.FAVORITES] ?: emptySet()

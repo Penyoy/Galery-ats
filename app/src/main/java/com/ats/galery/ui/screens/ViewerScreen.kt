@@ -34,6 +34,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.rounded.DeleteOutline
+import androidx.compose.material.icons.rounded.Edit
 import androidx.compose.material.icons.rounded.FastForward
 import androidx.compose.material.icons.rounded.FastRewind
 import androidx.compose.material.icons.rounded.Pause
@@ -86,6 +87,7 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.ui.AspectRatioFrameLayout
 import androidx.media3.ui.PlayerView
 import coil.compose.AsyncImage
+import coil.request.ImageRequest
 import com.ats.galery.MainActivity
 import com.ats.galery.R
 import com.ats.galery.data.MediaItem
@@ -117,6 +119,7 @@ fun ViewerScreen(
     ui: MediaUiState,
     vm: MediaViewModel,
     onBack: () -> Unit,
+    onEdit: (Long) -> Unit,
 ) {
     val context = LocalContext.current
     val activity = remember(context) { context.findActivity() as? MainActivity }
@@ -297,6 +300,7 @@ fun ViewerScreen(
                 VideoPage(
                     item = item,
                     isCurrent = isCurrent,
+                    loop = ui.settings.loopVideos,
                     onPlayerReady = { player -> players[page] = player },
                     onPlayingChanged = { playing -> playingPages[page] = playing },
                     onPlayerReleased = { players.remove(page) },
@@ -357,6 +361,11 @@ fun ViewerScreen(
                         contentDescription = "Favorit",
                         tint = if (ui.isFavorite(item.id)) MaterialTheme.colorScheme.primary else Color.White,
                     )
+                }
+                if (!item.isVideo) {
+                    IconButton(onClick = { onEdit(item.id) }) {
+                        Icon(Icons.Rounded.Edit, contentDescription = "Edit", tint = Color.White)
+                    }
                 }
                 IconButton(onClick = { share(item) }) {
                     Icon(Icons.Rounded.Share, contentDescription = "Bagikan", tint = Color.White)
@@ -468,6 +477,7 @@ fun ViewerScreen(
 private fun VideoPage(
     item: MediaItem,
     isCurrent: Boolean,
+    loop: Boolean,
     onPlayerReady: (ExoPlayer) -> Unit,
     onPlayingChanged: (Boolean) -> Unit,
     onPlayerReleased: () -> Unit,
@@ -510,6 +520,10 @@ private fun VideoPage(
 
     LaunchedEffect(isCurrent) {
         if (isCurrent) player.play() else player.pause()
+    }
+
+    LaunchedEffect(player, loop) {
+        player.repeatMode = if (loop) Player.REPEAT_MODE_ONE else Player.REPEAT_MODE_OFF
     }
 
     // Umpan balik singkat setelah aksi ketuk dua kali.
@@ -621,10 +635,19 @@ private fun ZoomableImage(
     onTap: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
     val maxScale = 6f
     var scale by remember(item.id) { mutableFloatStateOf(1f) }
     var offset by remember(item.id) { mutableStateOf(Offset.Zero) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Tanpa crossfade: gambar langsung tampil saat berpindah halaman.
+    val request = remember(item.uri) {
+        ImageRequest.Builder(context)
+            .data(item.uri)
+            .crossfade(false)
+            .build()
+    }
 
     fun clamp(newOffset: Offset, newScale: Float): Offset {
         val maxX = (containerSize.width * (newScale - 1f)) / 2f
@@ -685,7 +708,7 @@ private fun ZoomableImage(
         contentAlignment = Alignment.Center,
     ) {
         AsyncImage(
-            model = item.uri,
+            model = request,
             contentDescription = item.name,
             contentScale = ContentScale.Fit,
             modifier = Modifier

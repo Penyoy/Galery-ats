@@ -9,13 +9,21 @@ import androidx.compose.foundation.lazy.grid.GridItemSpan
 import androidx.compose.foundation.lazy.grid.LazyGridScope
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.itemsIndexed
+import androidx.compose.foundation.lazy.grid.rememberLazyGridState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.ats.galery.data.MediaItem
 import com.ats.galery.data.groupByDay
 import com.ats.galery.settings.Settings
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.distinctUntilChanged
 
 /** Lebar minimum satu kartu saat layar lebar (tablet/lanskap). */
 private val WIDE_CELL_MIN = 132.dp
@@ -23,12 +31,16 @@ private val WIDE_CELL_MIN = 132.dp
 /** Ambang lebar layar yang dianggap "lebar". */
 private val WIDE_SCREEN = 600.dp
 
+/** Jeda sebelum pratinjau video mulai, agar tidak berjalan saat masih menggulir. */
+private const val PREVIEW_DELAY_MS = 280L
+
 /**
  * Grid media berkelompok per hari dengan animasi masuk berjenjang.
  * [onOpen] menerima daftar terurut yang sama dengan tampilan beserta indeksnya.
  *
- * Di layar lebar jumlah kolom menyesuaikan sendiri (fleksibel) sehingga kartu
- * tetap seimbang, sedangkan di ponsel mengikuti pilihan pengguna.
+ * Di layar lebar jumlah kolom menyesuaikan sendiri (fleksibel). Bila pratinjau
+ * gerak aktif, hanya satu video yang dipratinjau: video pertama yang terlihat
+ * setelah gulir benar-benar berhenti.
  */
 @Composable
 fun MediaGrid(
@@ -48,6 +60,30 @@ fun MediaGrid(
     val staggerUnitMs = if (durationMs <= 0) 0L
     else (24f / settings.animationSpeed).toLong()
 
+    val gridState = rememberLazyGridState()
+    val videoIds = remember(items) { items.filter { it.isVideo }.map { it.id }.toSet() }
+    var previewId by remember { mutableStateOf<Long?>(null) }
+
+    LaunchedEffect(gridState, videoIds, settings.animatedPreviews) {
+        if (!settings.animatedPreviews || videoIds.isEmpty()) {
+            previewId = null
+            return@LaunchedEffect
+        }
+        snapshotFlow {
+            if (gridState.isScrollInProgress) emptyList()
+            else gridState.layoutInfo.visibleItemsInfo.mapNotNull { it.key as? Long }
+        }
+            .distinctUntilChanged()
+            .collect { visible ->
+                previewId = null
+                val next = visible.firstOrNull { it in videoIds }
+                if (next != null) {
+                    delay(PREVIEW_DELAY_MS)
+                    previewId = next
+                }
+            }
+    }
+
     BoxWithConstraints(modifier = modifier.fillMaxSize()) {
         val columns = if (maxWidth >= WIDE_SCREEN) {
             GridCells.Adaptive(minSize = WIDE_CELL_MIN)
@@ -57,6 +93,7 @@ fun MediaGrid(
 
         LazyVerticalGrid(
             columns = columns,
+            state = gridState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = contentPadding,
             horizontalArrangement = Arrangement.spacedBy(settings.spacingDp.dp),
@@ -86,6 +123,8 @@ fun MediaGrid(
                         staggerIndex = globalIndex,
                         entranceDurationMs = durationMs,
                         staggerUnitMs = staggerUnitMs,
+                        animatedPreview = settings.animatedPreviews,
+                        isPreview = item.id == previewId,
                         onOpen = { onOpen(ordered, globalIndex) },
                         onToggleFavorite = { onToggleFavorite(item) },
                     )

@@ -175,6 +175,18 @@ fun SettingsScreen(
                 checked = s.confirmDelete,
                 onChange = vm::setConfirmDelete,
             )
+            SwitchRow(
+                title = "Loop video",
+                subtitle = "Video diputar berulang otomatis",
+                checked = s.loopVideos,
+                onChange = vm::setLoopVideos,
+            )
+            SwitchRow(
+                title = "Pratinjau gerak di grid",
+                subtitle = "Video bergerak sendiri di grid (matikan untuk menghemat baterai)",
+                checked = s.animatedPreviews,
+                onChange = vm::setAnimatedPreviews,
+            )
             Spacer(Modifier.height(8.dp))
             Row(
                 modifier = Modifier.fillMaxWidth(),
